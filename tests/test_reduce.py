@@ -61,3 +61,54 @@ def test_book_quality_counts():
     assert q["n_updates"] == 4
     assert q["n_crossed"] == 1
     assert q["max_gap_ms"] == 2500  # between 2500 and end 5000
+
+
+# ---------------------------------------------------------------- stage 4: 100 ms snapshots
+from mms.calibration.reduce import snapshots_100ms, bucket_trades
+
+
+def _book100() -> pd.DataFrame:
+    # bucket 0: [0, 100), bucket 1: [100, 200), bucket 2: [200, 300), bucket 3: [300, 400)
+    return pd.DataFrame({
+        "time":      [10, 50, 50, 120, 150, 180, 330],
+        "update_id": [1, 3, 2, 4, 5, 6, 7],
+        "bid":     [10.0, 10.0, 10.0, 10.0, 9.9, 10.0, 10.0],
+        "bid_qty": [5.0, 2.0, 3.0, 4.0, 7.0, 6.0, 1.0],
+        "ask":     [10.1, 10.1, 10.1, 10.1, 10.1, 10.1, 10.2],
+        "ask_qty": [1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 9.0],
+    })
+
+
+def test_snapshots_100ms_last_state_and_min_max_at_final_price():
+    s = snapshots_100ms(_book100(), start_ms=0, end_ms=400)
+    assert list(s.t_ms) == [100, 200, 300, 400]           # state at the END of each bucket
+    # bucket 0: updates by (time, update_id): qty 5 (t10), 3 (id 2), 2 (id 3) -> last 2, min 2, max 5
+    r = s.iloc[0]
+    assert (r.bid, r.bid_qty, r.bid_qty_min, r.bid_qty_max) == (10.0, 2.0, 2.0, 5.0)
+    assert r.n_updates == 3
+    # bucket 1: carry-in 10.0 @ 2; updates 10.0 @ 4, 9.9 @ 7, 10.0 @ 6. Final price 10.0:
+    # observations at 10.0: carry 2, 4, 6 -> min 2, max 6; the 9.9 @ 7 update is a different price
+    r = s.iloc[1]
+    assert (r.bid, r.bid_qty, r.bid_qty_min, r.bid_qty_max) == (10.0, 6.0, 2.0, 6.0)
+    assert (r.ask, r.ask_qty, r.ask_qty_min, r.ask_qty_max) == (10.1, 4.0, 1.0, 4.0)
+    # bucket 2: no updates -> state carried (the book did not change), min = max = last
+    r = s.iloc[2]
+    assert (r.bid, r.bid_qty, r.bid_qty_min, r.bid_qty_max, r.n_updates) == (10.0, 6.0, 6.0, 6.0, 0)
+    # bucket 3: ask moves to 10.2 @ 9: carry-in was at 10.1, so min = max = 9
+    r = s.iloc[3]
+    assert (r.ask, r.ask_qty, r.ask_qty_min, r.ask_qty_max) == (10.2, 9.0, 9.0, 9.0)
+    assert (r.bid_qty, r.bid_qty_min, r.bid_qty_max) == (1.0, 1.0, 6.0)
+
+
+def test_snapshots_100ms_nan_before_first_update():
+    s = snapshots_100ms(_book100().iloc[3:], start_ms=0, end_ms=200)
+    assert np.isnan(s.bid.iloc[0]) and np.isnan(s.bid_qty_min.iloc[0])
+    assert s.bid.iloc[1] == 10.0
+
+
+def test_bucket_trades_index_and_aggressor_side():
+    trades = pd.DataFrame({"time": [5, 99, 100, 350], "price": [1.0, 2.0, 3.0, 4.0], "qty": [1.0] * 4,
+                           "is_buyer_maker": [True, False, False, True]})
+    out = bucket_trades(trades, start_ms=0)
+    assert list(out.bucket) == [0, 0, 1, 3]
+    assert list(out.side) == [-1, 1, 1, -1]     # +1 buyer-initiated (hits the ask), -1 seller-initiated
