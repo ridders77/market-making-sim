@@ -186,3 +186,20 @@ def test_keep_place_when_price_unchanged_and_rejoin_when_moved():
     assert env.orders[BID].Q == 1.0             # same price: same order, same place
     env.step((999, None))
     assert env.orders[BID].price == 999 and env.orders[BID].Q == float("inf")   # moved behind the touch
+
+
+def test_queue_frac_what_if():
+    """Stage 5 Part B: joining with only a fraction f of the displayed queue ahead (f = 1 is stage 4)."""
+    n = 6
+    day = make_day([1000] * n, [1001] * n, [2.0] * n, [3.0] * n, trades=[(2, 1000, 0.5, -1)])
+    for f, filled in ((1.0, 0.0), (0.5, 0.0), (0.2, 0.01), (0.0, 0.01)):
+        env = ReplayEnv(day, cfg(queue_frac=f, episode_s=0.4))
+        env.reset(1)
+        env.step((1000, None))
+        assert env.orders[BID] is None or env.orders[BID].Q == pytest.approx(max(0.0, 2.0 * f))
+        env.step((1000, None))
+        env.step((1000, None))
+        env.step((1000, None))
+        assert env.result().fill_qty == pytest.approx(filled)
+    with pytest.raises(ValueError):
+        cfg(queue_frac=1.5)

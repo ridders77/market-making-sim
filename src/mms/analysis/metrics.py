@@ -123,3 +123,17 @@ def summary_row(res: SimResult, fee_bps: float | None = None, n_boot: int = 2000
     out["n_clipped"] = res.n_clipped
     out["share_min_distance"] = res.n_min_distance / (2 * res.n_steps * len(res.pnl))
     return out
+
+
+def zero_crossing(x, y) -> float:
+    """Where y(x) first crosses zero, by linear interpolation between grid points, scanning x from largest to
+    smallest (Part B: queue share f from the back, 1, to the front, 0, so the first crossing is the least
+    priority needed to break even). NaN if y never changes sign."""
+    order = np.argsort(np.asarray(x, float))[::-1]
+    xs, ys = np.asarray(x, float)[order], np.asarray(y, float)[order]
+    for a in range(len(xs) - 1):
+        if ys[a] == 0:
+            return float(xs[a])
+        if (ys[a] < 0) != (ys[a + 1] < 0):
+            return float(xs[a] + (xs[a + 1] - xs[a]) * (0 - ys[a]) / (ys[a + 1] - ys[a]))
+    return float(xs[-1]) if ys[-1] == 0 else float("nan")

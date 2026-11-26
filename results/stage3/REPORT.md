@@ -1,3 +1,10 @@
+> **Superseded by the stage 4 replay validation (added 2026-11-26, stage 5).** This report's P&L numbers come from the
+> synthetic simulator. Replaying the same strategy on the real book and trades (results/stage4/REPORT.md, step 2) showed that
+> the synthetic model predicts fill volume well (ratio 0.98–1.06) but **underestimates the markout of our fills by about 1.5×**
+> (60 s markout ratio 1.49 [1.39, 1.60] at 0 bp). As a result, quoting wide (markout-aware A–S) at 0 bp **loses about −1.3 USDT/h**
+> (−1.34 [−1.76, −0.89]) on the test hours instead of the **+2.0 USDT/h** the synthetic model predicted for the same hours.
+> Adverse selection is even larger than reported below; read the stage 3 headline as optimistic. The text below is kept unchanged.
+
 # Stage 3 report: realistic fills, adverse selection, flow-aware quoting
 
 All numbers: 0.01 BTC lot, γ = 1e-4 per lot, T = 1 h, tick 0.1, 1,000 paired paths, 95% bootstrap CIs.

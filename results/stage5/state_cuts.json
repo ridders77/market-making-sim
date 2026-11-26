@@ -1,0 +1,24 @@
+{
+  "ofi_c": 0.6293763222658302,
+  "queue_cuts": [
+    0.5391830964311836,
+    1.281132014418586
+  ],
+  "sigma_cuts": [
+    0.9739680038128837,
+    1.6645768225291608
+  ],
+  "n_decision_points": 66240,
+  "ofi_nan_share": 0.0,
+  "days": [
+    "2023-05-30",
+    "2023-06-15",
+    "2023-06-22",
+    "2023-07-12",
+    "2023-08-03",
+    "2023-08-23",
+    "2023-08-29",
+    "2023-09-30"
+  ],
+  "note": "ofi_c = 1/3 quantile of |ofi_z| (each tail ~1/3); queue = displayed touch size / 30-min typical size, both sides pooled; sigma = sigma_hat (USDT/sqrt(s)). Grid: every 10 s, 01:00-24:00."
+}

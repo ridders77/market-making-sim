@@ -36,3 +36,11 @@ def test_ratio_of_means_ci_hand_worked():
     # Constant ratio: every resample gives the same value, so the CI collapses.
     est, lo, hi = ratio_of_means_ci(np.array([2.0, 4.0]), np.array([1.0, 2.0]), n_boot=200)
     assert est == lo == hi == pytest.approx(2.0)
+
+
+def test_zero_crossing_hand_worked():
+    from mms.analysis.metrics import zero_crossing
+    # P&L -10 at f = 1, -4 at 0.5, +2 at 0.25: crosses between 0.5 and 0.25, at 0.5 - 0.25 * 4/6
+    assert zero_crossing([1, 0.5, 0.25, 0], [-10, -4, 2, 5]) == pytest.approx(0.5 - 0.25 * 4 / 6)
+    assert np.isnan(zero_crossing([1, 0.5, 0.25, 0], [-10, -4, -2, -1]))      # never breaks even
+    assert zero_crossing([0, 0.5, 1], [3, 1, -1]) == pytest.approx(0.75)        # order of the grid does not matter

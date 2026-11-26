@@ -55,6 +55,7 @@ class ReplayConfig:
     episode_s: float = 3600.0
     gamma: float = 1e-4               # risk aversion per lot, for the reward's inventory penalty
     record: bool = False              # keep per-step arrays (for charts)
+    queue_frac: float = 1.0           # stage 5 what-if: share of the displayed queue ahead of us when we join the touch
 
     def __post_init__(self):
         if self.latency_ms % BUCKET_MS or self.latency_ms < 0:
@@ -63,6 +64,8 @@ class ReplayConfig:
             raise ValueError(f"cancel_rule must be one of {RULES}")
         if self.unseen_depth not in ("back", "front"):
             raise ValueError("unseen_depth must be 'back' or 'front'")
+        if not 0.0 <= self.queue_frac <= 1.0:
+            raise ValueError("queue_frac must be in [0, 1]")
 
     @property
     def n_steps(self) -> int:
@@ -193,7 +196,7 @@ class ReplayEnv:
             self.n_rej_limit += 1
             return
         if price == best:
-            Q = self._bq[r] if side == BID else self._aq[r]
+            Q = self.cfg.queue_frac * (self._bq[r] if side == BID else self._aq[r])
         elif (side == BID and price > best) or (side == ASK and price < best):
             Q = 0.0                                    # improves on the best price: alone at a new level
         else:

@@ -40,6 +40,16 @@ choice: they are charged against the queue as it stood at the start of the bucke
 7. If p is behind the best price, its queue is not observed and Q is unchanged. When the level becomes
    best again we keep our place (only capped by step 5): an order that was never cancelled keeps its
    time priority.
+
+Size cap (stage 5, ``size_cap=True``; off by default, so stage 4 is unchanged). Steps 1 and 3 fill the whole
+order, which is right for stage 4's 0.01 BTC but not for a 0.5 BTC execution order: had it been in the book,
+the aggressor would have eaten the queue ahead first and then only as much of us as its own size allowed.
+With the cap:
+1'. trade through: fill = min(qty, V_hit - Q_ahead), V_hit = volume the hitting aggressors traded at our
+    price or worse for them. An unseen queue (Q = inf) counts all the volume traded at our price as ahead.
+    The level was swept, so any remainder is alone at p (Q = 0) and the remaining steps still apply.
+3'. book crossing: fill = min(qty, displayed opposite size at the end of the bucket), a lower bound on the
+    size that arrived at (or through) our price.
 """
 
 from __future__ import annotations
@@ -69,6 +79,7 @@ class BucketBook:
     best_end: int         # our side's best price at the end of the bucket
     size_min: float       # smallest displayed size at best_end during the bucket
     opp_end: int          # the opposite side's best price at the end of the bucket
+    opp_size_end: float = math.inf   # its displayed size (used only with size_cap)
 
 
 @dataclass(frozen=True)
@@ -90,32 +101,55 @@ def cancels_ahead(rule: str, C: float, Q: float, level: float) -> float:
 
 
 def update_order(order: Order, tr_price: np.ndarray, tr_qty: np.ndarray, tr_side: np.ndarray,
-                 bk: BucketBook, rule: str) -> BucketResult:
+                 bk: BucketBook, rule: str, size_cap: bool = False) -> BucketResult:
     """Apply one bucket (steps 1-7 of the module docstring) to ``order`` in place; return what filled.
 
-    tr_price, tr_qty, tr_side: the bucket's trades (ticks, BTC, aggressor side +1 buy / -1 sell)."""
+    tr_price, tr_qty, tr_side: the bucket's trades (ticks, BTC, aggressor side +1 buy / -1 sell).
+    size_cap: cap trade-through and crossing fills by the volume that could have reached us (1', 3')."""
     s, p = order.side, order.price
     # aggressors that can hit us: sellers for our bid, buyers for our ask
-    hits = tr_side == -s
-    if hits.any():
+    hits = (tr_side == -s) if len(tr_side) else None
+    filled, how = 0.0, ""
+    V = 0.0
+    if hits is not None and hits.any():
         px = tr_price[hits]
         if (s == BID and px.min() < p) or (s == ASK and px.max() > p):
-            return _fill_all(order, "through")
-        V = float(tr_qty[hits][px == p].sum())
-    else:
-        V = 0.0
-    filled = 0.0
+            if not size_cap:
+                return _fill_all(order, "through")
+            q = tr_qty[hits]
+            at = float(q[px == p].sum())
+            v_hit = float(q[(px <= p) if s == BID else (px >= p)].sum())
+            ahead = order.Q if math.isfinite(order.Q) else at
+            filled = min(order.qty, max(0.0, v_hit - ahead))
+            order.qty -= filled
+            order.Q = 0.0
+            how = "through"
+            if order.qty <= 1e-12:
+                order.qty = 0.0
+                return BucketResult(filled, how)
+            V = -1.0                                   # marker: volume at p already used by step 1'
+        else:
+            V = float(tr_qty[hits][px == p].sum())
     if V > 0 and math.isfinite(order.Q):
         order.Q -= V
         if order.Q < 0:
             filled = min(order.qty, -order.Q)
             order.qty -= filled
             order.Q = 0.0
+            how = "queue"
+    V = max(V, 0.0)
     if order.qty <= 0:
-        return BucketResult(filled, "queue")
+        return BucketResult(filled, how)
     if (s == BID and bk.opp_end <= p) or (s == ASK and bk.opp_end >= p):
-        rest = _fill_all(order, "cross")
-        return BucketResult(filled + rest.filled, "cross")
+        if not size_cap:
+            rest = _fill_all(order, "cross")
+            return BucketResult(filled + rest.filled, "cross")      # stage 4 labelling
+        x = min(order.qty, bk.opp_size_end)
+        order.qty -= x
+        order.Q = 0.0
+        if order.qty <= 1e-12:
+            order.qty = 0.0
+        return BucketResult(filled + x, how or "cross")
     better_than_best = (s == BID and p > bk.best_end) or (s == ASK and p < bk.best_end)
     if better_than_best:
         order.Q = 0.0
@@ -125,7 +159,7 @@ def update_order(order: Order, tr_price: np.ndarray, tr_qty: np.ndarray, tr_side
             if C > 0:
                 order.Q -= cancels_ahead(rule, C, order.Q, bk.size_prev - V)
         order.Q = max(0.0, min(order.Q, bk.size_min))
-    return BucketResult(filled, "queue" if filled > 0 else "")
+    return BucketResult(filled, how)
 
 
 def _fill_all(order: Order, how: str) -> BucketResult:

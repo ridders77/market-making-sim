@@ -1,0 +1,50 @@
+{
+  "H60|-1|retail": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 2.726039488281361
+  },
+  "H60|-1|pro": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 0.20891278654873024
+  },
+  "H60|1|retail": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 2.701765986915454
+  },
+  "H60|1|pro": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 0.18565416985087252
+  },
+  "H120|-1|retail": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 2.7593515183963526
+  },
+  "H120|-1|pro": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 0.25557326270595226
+  },
+  "H120|1|retail": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 2.669757496658541
+  },
+  "H120|1|pro": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 0.16759241797648466
+  },
+  "H300|-1|retail": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 2.6957461898465205
+  },
+  "H300|-1|pro": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 0.19592016118825017
+  },
+  "H300|1|retail": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 2.6569489272168783
+  },
+  "H300|1|pro": {
+    "strategy": "fixed_touch",
+    "mean_cost_bps": 0.1567847228259527
+  }
+}
