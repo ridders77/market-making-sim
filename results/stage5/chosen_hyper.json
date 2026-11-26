@@ -1,0 +1,8 @@
+{
+  "alpha": 0.01,
+  "decay": 0.5,
+  "episodes": 160000,
+  "budget": 160000,
+  "mean_val_cost": 1.6436447123474784,
+  "rule": "minimise the mean validation cost over private and all-variable agents x buy/sell x retail/pro (H = 1 min, seed 100); the same setting is used for every agent and horizon"
+}
