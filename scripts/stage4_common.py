@@ -85,7 +85,10 @@ def episode_markouts(r, d, start: int) -> dict:
     if r.n_fills == 0:
         empty = np.array([])
         return {"arrays": {"step": empty, "side": empty, "price": empty, "qty": empty, "mid0": empty, "how": empty,
-                           **{f"mk{h}": empty for h in HORIZONS}}, "sums": {}}
+                           **{f"mk{h}": empty for h in HORIZONS}},
+                "sums": {**{f"mk{h}_sum": 0.0 for h in HORIZONS}, "mk_qty": 0.0, "captured_sum": 0.0,
+                         **{f"{k}_{how}": 0.0 for how in ("queue", "through", "cross")
+                            for k in ("qty", "mk60_sum", "mk_qty")}}}          # sums over no fills are 0
     step, side, qty, mid0 = f["step"], f["side"].astype(float), f["qty"], f["mid0"]
     price = f["price"] * 0.1
     valid = (step - start) < MARKOUT_VALID_S * BUCKETS_PER_S
@@ -145,9 +148,20 @@ def run_task(task: tuple) -> str:
     return key
 
 
+SUM_COLS = [f"mk{h}_sum" for h in HORIZONS] + ["mk_qty", "captured_sum"] +     [f"{k}_{how}" for how in ("queue", "through", "cross") for k in ("qty", "mk60_sum", "mk_qty")]
+
+
 def load_runs(spec: dict, rule: str, latency: int, lot: float, days, unseen: str = "back") -> pd.DataFrame:
-    return pd.concat([pd.read_parquet(RUNS / f"{task_key(spec, rule, latency, lot, d, unseen)}.parquet") for d in days],
-                     ignore_index=True)
+    df = pd.concat([pd.read_parquet(RUNS / f"{task_key(spec, rule, latency, lot, d, unseen)}.parquet") for d in days],
+                   ignore_index=True)
+    # Episodes cached before the fix in episode_markouts stored no sums when they had no fills; the sum over no
+    # fills is exactly 0 (only for n_fills == 0 rows; any other NaN is left alone and would surface).
+    none = df["n_fills"] == 0
+    for c in SUM_COLS:
+        if c not in df:
+            df[c] = np.nan
+        df.loc[none, c] = df.loc[none, c].fillna(0.0)
+    return df
 
 
 def load_fills(spec: dict, rule: str, latency: int, lot: float, days) -> pd.DataFrame:

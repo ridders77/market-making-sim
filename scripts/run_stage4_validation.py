@@ -60,8 +60,27 @@ def hour_params(sigma: float, s0: float) -> dict:
             "jump_mean": tuple(np.array(JUMP_MEAN_BPS) * s0 / 1e4), "jump_sd": float(np.interp(sigma, _REG_SIGMA, _REG_JSD))}
 
 
-def synth_hour(sigma: float, s0: float, fee: float) -> dict:
+MAX_CELLS = 3_600_000      # paths x steps per chunk (200 x 18,000): caps memory at ~0.3 GB per task
+
+
+def synth_hour(sigma: float, s0: float, fee: float, seeds=None) -> dict:
+    """Mean outcome per path over ``seeds`` (default SEEDS). Paths are run in chunks so that paths x steps stays at
+    most MAX_CELLS; every path's randomness comes from its own seed, so chunking does not change the result."""
+    seeds = SEEDS if seeds is None else list(seeds)
     hp = hour_params(sigma, s0)
+    N = int(round(T / hp["dt"]))
+    size = max(1, MAX_CELLS // N)
+    parts = [_synth_chunk(sigma, s0, fee, hp, seeds[i:i + size]) for i in range(0, len(seeds), size)]
+    tot = {k: sum(p[k] for p in parts) for k in ("fills", "pnl", "pnl2", "mk_sum", "mk_qty")}
+    n = len(seeds)
+    mean = tot["pnl"] / n
+    return {"syn_fill_btc": LOT * tot["fills"] / n, "syn_pnl": mean,
+            "syn_pnl_sd": float(np.sqrt((tot["pnl2"] - n * mean**2) / (n - 1))),
+            "syn_mk60_sum": LOT * tot["mk_sum"] / n, "syn_mk_qty": LOT * tot["mk_qty"] / n,
+            "dt": hp["dt"], "A": hp["A"], "k": hp["k"]}
+
+
+def _synth_chunk(sigma: float, s0: float, fee: float, hp: dict, seeds: list) -> dict:
     flow = FlowParams(kappa=hp["kappa"], tau=hp["tau"], theta=hp["theta"], jump_delta=tuple(JUMP_DELTA),
                       jump_mean=hp["jump_mean"], jump_sd=hp["jump_sd"])
     if sigma**2 <= 2 * hp["kappa"] ** 2 * hp["tau"]:
@@ -72,8 +91,8 @@ def synth_hour(sigma: float, s0: float, fee: float) -> dict:
                                        tau_x=hp["tau"], jump_delta=tuple(JUMP_DELTA), jump_mean=hp["jump_mean"],
                                        s_ref=s0, use_signal=False, name="markout_aware_as")
     env = MarketMakingEnv(cfg)
-    obs = env.reset(SEEDS)
-    N, n = mp.n_steps, len(SEEDS)
+    obs = env.reset(seeds)
+    N, n = mp.n_steps, len(seeds)
     mids = np.empty((n, N + 1))
     mids[:, 0] = obs["mid"]
     nb = np.zeros((n, N), dtype=bool)
@@ -86,13 +105,13 @@ def synth_hour(sigma: float, s0: float, fee: float) -> dict:
         i += 1
     res = env.result()
     hsteps = int(round(60 / hp["dt"]))
-    valid = np.arange(N) < N - hsteps
     mk_b = np.zeros((n, N))                               # we bought at step i: adverse if the mid falls
     mk_b[:, :N - hsteps] = -(mids[:, hsteps:N] - mids[:, :N - hsteps])
-    mk_sum = (nb * valid * mk_b).sum() - (na * valid * mk_b).sum()      # ask: -(+) sign flip
+    valid = np.arange(N) < N - hsteps                     # fills in the first 59 minutes
+    mk_sum = (nb * valid * mk_b).sum() - (na * valid * mk_b).sum()      # an ask fill is adverse if the mid rises
     mk_qty = (nb * valid).sum() + (na * valid).sum()
-    return {"syn_fill_btc": LOT * res.n_fills.mean(), "syn_pnl": res.pnl.mean(), "syn_pnl_sd": res.pnl.std(ddof=1),
-            "syn_mk60_sum": LOT * mk_sum / n, "syn_mk_qty": LOT * mk_qty / n, "dt": hp["dt"], "A": hp["A"], "k": hp["k"]}
+    return {"fills": float(res.n_fills.sum()), "pnl": float(res.pnl.sum()), "pnl2": float((res.pnl ** 2).sum()),
+            "mk_sum": float(mk_sum), "mk_qty": float(mk_qty)}
 
 
 def synth_task(task) -> str:
@@ -122,8 +141,12 @@ def boot_markout_ratio(rs, rq, ss, sq, seed=0):
     rs, rq, ss, sq = (np.asarray(x, float) for x in (rs, rq, ss, sq))
     rng = np.random.default_rng(seed)
     idx = rng.integers(0, len(rs), (N_BOOT, len(rs)))
-    b = (rs[idx].sum(1) / rq[idx].sum(1)) / (ss[idx].sum(1) / sq[idx].sum(1))
-    return float((rs.sum() / rq.sum()) / (ss.sum() / sq.sum())), *np.quantile(b, [0.025, 0.975])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        b = (rs[idx].sum(1) / rq[idx].sum(1)) / (ss[idx].sum(1) / sq[idx].sum(1))
+    n_bad = int((~np.isfinite(b)).sum())
+    if n_bad:
+        log.info("markout ratio: %d of %d resamples had no replay fills (dropped from the CI)", n_bad, N_BOOT)
+    return float((rs.sum() / rq.sum()) / (ss.sum() / sq.sum())), *np.nanquantile(np.where(np.isfinite(b), b, np.nan), [0.025, 0.975])
 
 
 def boot_diff(a, b, seed=0):
