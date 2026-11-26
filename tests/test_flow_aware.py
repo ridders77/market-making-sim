@@ -67,3 +67,15 @@ def test_post_only_never_quotes_at_or_through_the_mid():
     b, a = _strategy(kappa=50.0).act(_obs(x=3.0))
     assert b[0] == pytest.approx(100.0 - 0.05)
     assert a[0] > 100.0
+
+
+def test_markout_allowance_respects_the_minimum_distance():
+    # J is low only at the touch (0.3 at delta = 0.05) and 2.5 from 0.15 on; a big rebate (fee_per_fill = -1.4)
+    # would pull the unconstrained optimum to the touch, outside the calibrated range. With delta_min = 0.1
+    # the optimum is searched over delta >= 0.1 only: f = e^{-k d}(d + 1.4 - 2.5) on d >= 0.15 (k = 0.5)
+    # -> f' = 0 at d = 1/k + 1.1 = 3.1, so the allowance = 3.1 - (2 - 1.4) = 2.5 (= J on the flat part).
+    j = markout_allowance(k=0.5, fee_per_fill=-1.4, jump_delta=(0.05, 0.15, 100.0), jump_mean=(0.3, 2.5, 2.5),
+                          delta_min=0.1)
+    assert j == pytest.approx(2.5, abs=1e-5)
+    j0 = markout_allowance(k=0.5, fee_per_fill=-1.4, jump_delta=(0.05, 0.15, 100.0), jump_mean=(0.3, 2.5, 2.5))
+    assert j0 < 0   # unconstrained: drawn to the touch

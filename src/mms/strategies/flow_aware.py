@@ -56,14 +56,16 @@ from scipy.optimize import minimize_scalar
 from mms.strategies.avellaneda_stoikov import FeeAwareAvellanedaStoikov
 
 
-def markout_allowance(k: float, fee_per_fill: float, jump_delta, jump_mean, delta_max: float = 50.0) -> float:
+def markout_allowance(k: float, fee_per_fill: float, jump_delta, jump_mean, delta_max: float = 50.0,
+                      delta_min: float = 0.0) -> float:
     """Shift of the risk-neutral optimal distance caused by the markout curve J (section 2).
 
-    Maximises f(delta) = e^{-k delta} (delta - fee_per_fill - J(delta)) on a 0.001 grid over [0, delta_max],
+    Maximises f(delta) = e^{-k delta} (delta - fee_per_fill - J(delta)) on a 0.001 grid over [delta_min, delta_max]
+    (delta_min: the range where lambda and J are calibrated; below it the optimum would be an extrapolation),
     refines around the best grid point, and returns delta* - (1/k + fee_per_fill)."""
     J = lambda d: np.interp(d, jump_delta, jump_mean)
     f = lambda d: np.exp(-k * d) * (d - fee_per_fill - J(d))
-    grid = np.arange(0.0, delta_max, 0.001)
+    grid = np.arange(delta_min, delta_max, 0.001)
     i = int(np.argmax(f(grid)))
     lo, hi = grid[max(i - 1, 0)], grid[min(i + 1, len(grid) - 1)]
     best = minimize_scalar(lambda d: -f(d), bounds=(lo, hi), method="bounded", options={"xatol": 1e-9})
@@ -82,11 +84,13 @@ class FlowAwareAvellanedaStoikov(FeeAwareAvellanedaStoikov):
     s_ref: float = 1.0                 # price level used for the fee term in the allowance
     use_signal: bool = True
     min_half: float = 0.05             # post-only: at least half a tick from the mid
+    delta_min: float = 0.1             # the allowance is optimised over delta >= this (calibrated range)
     name: str = "flow_aware_as"
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        a = markout_allowance(self.k, self.fee_bps * 1e-4 * self.s_ref, self.jump_delta, self.jump_mean)
+        a = markout_allowance(self.k, self.fee_bps * 1e-4 * self.s_ref, self.jump_delta, self.jump_mean,
+                               delta_min=self.delta_min)
         object.__setattr__(self, "allowance", a)
 
     def drift_shift(self, x, t: float):

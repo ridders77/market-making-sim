@@ -163,3 +163,22 @@ def test_fee_aware_strategy_runs_through_env_with_obs():
     strat = FeeAwareAvellanedaStoikov(gamma=1e-3, sigma=REAL.sigma, k=REAL.k, T=REAL.T, fee_bps=2.0)
     r = run_env(strat, EnvConfig(REAL, tick_size=0.1, maker_fee_bps=2.0, lot=0.01), range(5))
     assert np.isfinite(r.pnl).all()
+
+
+def test_min_distance_keeps_quotes_in_the_calibrated_range():
+    # With min_distance = 0.1, a bid above S - 0.1 is moved down to S - 0.1 (then rounded down to the tick),
+    # an ask below S + 0.1 moved up; the number of clamped (step, side) cases is counted.
+    params = MarketParams(s0=100.0, sigma=0.0, T=1.0, dt=0.05, A=1.0, k=1.0, fill_rule="exact")
+    env = MarketMakingEnv(EnvConfig(params, tick_size=0.1, min_distance=0.1))
+    obs = env.reset([1, 2])
+    S = obs["mid"]
+    _, _, _, info = env.step((S + 0.5, S + 0.03))          # bid through the mid, ask too close
+    np.testing.assert_allclose(info["bid"], S - 0.1)
+    np.testing.assert_allclose(info["ask"], S + 0.1)
+    _, _, _, info = env.step((S - 0.3, S + 0.3))           # far enough: untouched
+    np.testing.assert_allclose(info["bid"], S - 0.3)
+    while True:
+        _, _, done, _ = env.step((S - 0.3, S + 0.3))
+        if done:
+            break
+    assert env.result().n_min_distance == 4                # 2 paths x 2 sides in the first step

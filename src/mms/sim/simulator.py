@@ -70,6 +70,7 @@ class SimResult:
     fee_bps: float = 0.0             # maker fee used in the run
     paths: dict[str, np.ndarray] = field(default_factory=dict)
     lot: float = 1.0                 # BTC per fill (stage 3); q, fills are counted in lots
+    n_min_distance: int = 0          # (step, side) quotes moved out to the env's min_distance
 
     def pnl_bps(self, fee_bps: float | None = None) -> np.ndarray:
         """P&L per unit of traded notional, in bps: 10^4 * P&L / notional, per path (NaN with no fills).

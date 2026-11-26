@@ -328,6 +328,9 @@ def main() -> None:
                 ax.fill_between(HORIZONS, v[:, 1], v[:, 2], color=col, alpha=0.12)
         ax.set_xscale("log"); ax.set_xticks(HORIZONS, [str(h) for h in HORIZONS])
         ax.set_xlabel("seconds after the trade"); ax.set_ylabel(ylab); ax.axhline(0, color="grey", lw=0.6)
+        # the >=10 USDT sweeps (few, noisy) would squash the rest: cap the axis and say so
+        ax.set_ylim(-0.2, 10 if unit == "" else 3)
+        ax.text(0.99, 0.02, "δ ≥ 10 bucket off scale (see markouts.md)", transform=ax.transAxes, ha="right", va="bottom", fontsize=7)
     axes[0].legend(fontsize=7, frameon=False, title="solid = calibration, dashed = test", title_fontsize=7)
     fig.suptitle("Markout curves: how far the mid moves against the passive side after a print at distance δ (95% CI over days)")
     fig.tight_layout(); fig.savefig(OUT / "markout_curves.png", dpi=130); plt.close(fig)
@@ -339,13 +342,13 @@ def main() -> None:
     ax.bar(xpos - 0.2, 100 * ofi.r2_cal, 0.4, color="#1f77b4", label="calibration (in sample)")
     ax.bar(xpos + 0.2, 100 * ofi.r2_test, 0.4, color="#ff7f0e", label="test (out of sample)",
            yerr=[100 * (ofi.r2_test - ofi.r2_test_lo), 100 * (ofi.r2_test_hi - ofi.r2_test)], capsize=2)
-    ax.axhline(0, color="grey", lw=0.6); ax.set_xticks(xpos, lab, fontsize=6); ax.set_ylabel("R² (%)")
+    ax.axhline(0, color="grey", lw=0.6); ax.set_xticks(xpos, lab, fontsize=6, rotation=60); ax.set_ylabel("R² (%)")
     ax.set_title("OFI → next mid move: R²"); ax.legend(fontsize=7, frameon=False)
     ax = axes[1]
     ax.bar(xpos - 0.2, ofi.hit_cal, 0.4, color="#1f77b4", label="calibration")
     ax.bar(xpos + 0.2, ofi.hit_test, 0.4, color="#ff7f0e", label="test",
            yerr=[ofi.hit_test - ofi.hit_test_lo, ofi.hit_test_hi - ofi.hit_test], capsize=2)
-    ax.axhline(0.5, color="grey", lw=0.6); ax.set_ylim(0.45, 0.62); ax.set_xticks(xpos, lab, fontsize=6)
+    ax.axhline(0.5, color="grey", lw=0.6); ax.set_ylim(0.45, 0.62); ax.set_xticks(xpos, lab, fontsize=6, rotation=60)
     ax.set_title("hit rate (sign agreement)"); ax.legend(fontsize=7, frameon=False)
     ax = axes[2]
     ax.plot(BETA_H, beta_cal, "o", color="#1f77b4", label="calibration")

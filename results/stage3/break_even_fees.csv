@@ -1,0 +1,22 @@
+regime,env,strategy,break_even_bp,lo,hi,note
+low,no informed flow,naive,0.6333023937514204,0.5680865355121618,0.701926585507223,
+low,no informed flow,avellaneda_stoikov,0.6048576116420917,0.5898155529286314,0.6198314026070132,
+low,informed flow ×1,naive,-0.49799844810292276,-0.5976534087794052,-0.39739811110320034,
+low,informed flow ×1,avellaneda_stoikov,-0.05239401417308793,-0.07081270119219511,-0.03320556461056517,
+low,informed flow ×1,fee_aware_as,-0.6247424831343553,-0.6434245197050593,-0.6074825641208617,
+low,informed flow ×1,markout_aware_as,,,,never loses; stops trading (<1 fill/h) from +2 bp
+low,informed flow ×1,flow_aware_as,,,,never loses; stops trading (<1 fill/h) from +2 bp
+medium,no informed flow,naive,0.808487427802812,0.7233696251231557,0.8937769755864656,
+medium,no informed flow,avellaneda_stoikov,0.7318474956222981,0.7213478647503072,0.7420076011680679,
+medium,informed flow ×1,naive,-0.36513203238921,-0.5133227017442658,-0.22287839872924167,
+medium,informed flow ×1,avellaneda_stoikov,0.0970914118159964,0.07905645279325664,0.1140728889600498,
+medium,informed flow ×1,fee_aware_as,0.6523686361172182,0.4922859961274694,0.7884627543531088,
+medium,informed flow ×1,markout_aware_as,,,,never loses; stops trading (<1 fill/h) from +2 bp
+medium,informed flow ×1,flow_aware_as,,,,never loses; stops trading (<1 fill/h) from +2 bp
+high,no informed flow,naive,1.0919790758381773,0.9874585665345512,1.1978613872240382,
+high,no informed flow,avellaneda_stoikov,0.8638097634377371,0.8569654356353346,0.8709175189162534,
+high,informed flow ×1,naive,-0.006116456622562863,-0.20879909093179685,0.1932261621895482,
+high,informed flow ×1,avellaneda_stoikov,0.2163630077053753,0.20114728780486996,0.23139149771844367,
+high,informed flow ×1,fee_aware_as,0.9637999725903503,0.8989037993409857,1.1253132525966123,
+high,informed flow ×1,markout_aware_as,,,,never loses; stops trading (<1 fill/h) from +3 bp
+high,informed flow ×1,flow_aware_as,,,,never loses; stops trading (<1 fill/h) from +3 bp

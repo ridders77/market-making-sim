@@ -121,4 +121,5 @@ def summary_row(res: SimResult, fee_bps: float | None = None, n_boot: int = 2000
     put("mean_quoted_spread", bootstrap_ci(res.mean_quoted_spread, np.mean, n_boot, seed))
     out["notional_per_episode"] = float(np.mean(res.notional))
     out["n_clipped"] = res.n_clipped
+    out["share_min_distance"] = res.n_min_distance / (2 * res.n_steps * len(res.pnl))
     return out

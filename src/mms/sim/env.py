@@ -16,7 +16,10 @@ The action is the pair of quote prices (bid, ask). Reward = change in marked-to-
 
 One step from t_i to t_{i+1} = t_i + dt
 --------------------------------------
-1. Quotes (bid, ask), rounded outward to the tick (bid down, ask up) if a tick is set.
+1. Quotes (bid, ask). Stage 3 option ``min_distance``: a quote closer to the mid than this is moved out to it
+   (counted). lambda(delta) and the markout curve are calibrated only beyond the touch (delta >= 0.1 USDT;
+   the touch needs a queue model we do not have), and a maker order can never cross the mid.
+   Then rounded outward to the tick (bid down, ask up) if a tick is set.
 2. Distances from the mid delta_b = S_i - bid, delta_a = ask - S_i. Each side fills one lot with
    probability 1 - exp(-lambda dt) (or lambda dt, stage 1 rule), with
        lambda_ask = A exp(-k delta_a) * exp(+theta x_i - theta^2/2),
@@ -100,6 +103,7 @@ class EnvConfig:
     maker_fee_bps: float = 0.0
     flow: FlowParams | None = None        # None: stage 1/2 dynamics
     sigma_span_s: float = 1800.0          # EWMA span of the observed sigma_hat (seconds)
+    min_distance: float | None = None     # stage 3: quotes kept >= this far from the mid (calibrated range of lambda, J)
 
 
 def _as_seeds(seeds) -> np.ndarray:
@@ -151,6 +155,7 @@ class MarketMakingEnv:
         self._notional = np.zeros(n)              # per unit lot; x lot at the end
         self._spread_sum = np.zeros(n)
         self._n_clipped = 0
+        self._n_min_distance = 0
         self._var = np.full(n, p.sigma**2)        # EWMA of (dS)^2/dt, started at the calibrated sigma^2
         self._alpha = 2.0 / (cfg.sigma_span_s / p.dt + 1.0)
         self._record = record_paths
@@ -186,6 +191,10 @@ class MarketMakingEnv:
             raise RuntimeError("call reset() before step(), and not after the episode is done")
         cfg, p, f, i = self.cfg, self.cfg.market, self.cfg.flow, self._i
         bid, ask = (np.asarray(a, dtype=float) for a in action)
+        if cfg.min_distance is not None:
+            lo, hi = self._S - cfg.min_distance, self._S + cfg.min_distance
+            self._n_min_distance += int(np.count_nonzero(bid > lo) + np.count_nonzero(ask < hi))
+            bid, ask = np.minimum(bid, lo), np.maximum(ask, hi)
         if cfg.tick_size is not None:
             bid, ask = round_quotes(bid, ask, cfg.tick_size)
         Si = self._S
@@ -243,7 +252,7 @@ class MarketMakingEnv:
             max_abs_q=self._max_abs_q, n_bid_fills=self._nb, n_ask_fills=self._na,
             spread_captured_sum=self._captured, mean_quoted_spread=self._spread_sum / self.N,
             n_steps=self.N, n_clipped=self._n_clipped, notional=lot * self._notional,
-            fee_bps=self.cfg.maker_fee_bps, paths=paths, lot=lot,
+            fee_bps=self.cfg.maker_fee_bps, paths=paths, lot=lot, n_min_distance=self._n_min_distance,
         )
 
 
@@ -278,5 +287,5 @@ def concat_results(parts: list[SimResult]) -> SimResult:
         n_bid_fills=cat("n_bid_fills"), n_ask_fills=cat("n_ask_fills"),
         spread_captured_sum=cat("spread_captured_sum"), mean_quoted_spread=cat("mean_quoted_spread"),
         n_steps=parts[0].n_steps, n_clipped=sum(r.n_clipped for r in parts), notional=cat("notional"),
-        fee_bps=parts[0].fee_bps, lot=parts[0].lot,
+        fee_bps=parts[0].fee_bps, lot=parts[0].lot, n_min_distance=sum(r.n_min_distance for r in parts),
     )
