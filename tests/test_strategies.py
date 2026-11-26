@@ -72,3 +72,31 @@ def test_naive_symmetric():
 def test_naive_rejects_negative_spread():
     with pytest.raises(ValueError):
         NaiveSymmetric(spread=-1.0)
+
+
+# ---------------------------------------------------------------- stage 3: fee-aware A-S
+from mms.strategies.avellaneda_stoikov import FeeAwareAvellanedaStoikov
+
+
+def test_fee_aware_as_hand_worked():
+    # Same inputs as the hand-worked A-S quote (S = 100, q = 2, gamma = 0.1, sigma = 2, T - t = 0.5, k = 1.5):
+    # plain A-S: bid 98.8546148, ask 100.3453852.
+    # Maker fee c = 2 bp = 0.0002 of notional: each fill costs c * S = 0.0002 * 100 = 0.02,
+    # so each half-spread grows by 0.02: bid 98.8346148, ask 100.3653852 (reservation price unchanged).
+    strat = FeeAwareAvellanedaStoikov(gamma=0.1, sigma=2.0, k=1.5, T=1.0, fee_bps=2.0)
+    bid, ask = strat.quotes(0.5, np.array([100.0]), np.array([2]))
+    assert bid[0] == pytest.approx(98.8346148, abs=1e-7)
+    assert ask[0] == pytest.approx(100.3653852, abs=1e-7)
+
+
+def test_fee_aware_as_rebate_narrows_and_zero_fee_is_plain_as():
+    # A -0.5 bp rebate at S = 30,000 pays 1.5 USDT per fill, so each side moves 1.5 USDT closer to the mid.
+    kw = dict(gamma=1e-4, sigma=1.9, k=0.46, T=3600.0)
+    plain = AvellanedaStoikov(**kw)
+    S, q = np.array([30000.0]), np.array([3])
+    b0, a0 = plain.quotes(100.0, S, q)
+    b1, a1 = FeeAwareAvellanedaStoikov(**kw, fee_bps=-0.5).quotes(100.0, S, q)
+    assert b1[0] - b0[0] == pytest.approx(1.5) and a0[0] - a1[0] == pytest.approx(1.5)
+    b2, a2 = FeeAwareAvellanedaStoikov(**kw, fee_bps=0.0).quotes(100.0, S, q)
+    np.testing.assert_array_equal(b2, b0)
+    np.testing.assert_array_equal(a2, a0)

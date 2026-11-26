@@ -24,3 +24,15 @@ def test_bootstrap_ci_reproducible():
 def test_sharpe_like():
     # mean 2, population std 1 (ddof=1 on [1,3]: std = sqrt(2))
     assert sharpe_like(np.array([1.0, 3.0])) == pytest.approx(2 / np.sqrt(2))
+
+
+def test_ratio_of_means_ci_hand_worked():
+    from mms.analysis.metrics import ratio_of_means_ci
+    # P&L per notional in bps = 1e4 * sum(pnl) / sum(notional) (volume-weighted margin):
+    # pnl = [1, 2, 3] USDT on notional [10000, 10000, 20000] -> 1e4 * 6 / 40000 = 1.5 bp.
+    est, lo, hi = ratio_of_means_ci(np.array([1.0, 2, 3]), np.array([1e4, 1e4, 2e4]), scale=1e4, n_boot=500)
+    assert est == pytest.approx(1.5)
+    assert lo <= est <= hi
+    # Constant ratio: every resample gives the same value, so the CI collapses.
+    est, lo, hi = ratio_of_means_ci(np.array([2.0, 4.0]), np.array([1.0, 2.0]), n_boot=200)
+    assert est == lo == hi == pytest.approx(2.0)

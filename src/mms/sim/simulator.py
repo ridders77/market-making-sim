@@ -69,6 +69,15 @@ class SimResult:
     notional: np.ndarray = None      # sum over fills of the fill price (USDT traded, per path)
     fee_bps: float = 0.0             # maker fee used in the run
     paths: dict[str, np.ndarray] = field(default_factory=dict)
+    lot: float = 1.0                 # BTC per fill (stage 3); q, fills are counted in lots
+
+    def pnl_bps(self, fee_bps: float | None = None) -> np.ndarray:
+        """P&L per unit of traded notional, in bps: 10^4 * P&L / notional, per path (NaN with no fills).
+
+        This is the market maker's margin on volume; it does not depend on the lot size."""
+        pnl = self.pnl if fee_bps is None else self.pnl_with_fee(fee_bps)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            return np.where(self.notional > 0, 1e4 * pnl / self.notional, np.nan)
 
     def pnl_with_fee(self, fee_bps: float) -> np.ndarray:
         """P&L under another maker fee. Fees only change cash, by -fee * price per fill, so

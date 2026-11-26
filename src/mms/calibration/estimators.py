@@ -212,3 +212,99 @@ def fit_loglog(x: np.ndarray, y: np.ndarray) -> dict:
     f = fit_exponential(np.log(x), y)
     slope, scale = -f["k"], f["A"]
     return {"slope": slope, "scale": scale, "r2": f["r2"], "predict": lambda v: scale * np.asarray(v, float) ** slope}
+
+
+# ============================================================================ stage 3
+r"""
+5. Lot size: a window fills our order only if enough volume reaches it (stage 3)
+--------------------------------------------------------------------------------
+The stage 2 rule counted a window as a fill at distance delta if *any* print reached
+mid_0 + delta. That fills a whole lot from a 0.001 BTC print, which overstates fills.
+With a lot of u BTC, a resting ask at mid_0 + delta is (fully) filled within the window only if
+the buyer-initiated volume printed at prices >= mid_0 + delta is at least u:
+
+    V_ask(delta) = sum of qty over buy prints in the window with price - mid_0 >= delta,
+    fill at delta  <=>  V_ask(delta) >= u.
+
+V_ask is a decreasing step function of delta, so "fill at delta" holds exactly for
+delta <= e_u, where e_u (the *lot excursion*) is the distance of the print at which the
+volume, cumulated from the deepest print inwards, first reaches u. So the stage 2 machinery
+(touch_curve on per-window excursions) applies unchanged with e_u in place of the max print.
+As u -> 0, e_u -> the deepest print, i.e. the stage 2 rule.
+(Queue position is still ignored: we assume all volume at our price could reach us.)
+"""
+
+QTY_EPS = 1e-9  # BTC tolerance when cumulating quantities (0.004 + 0.003 + 0.003 is not exactly 0.01)
+
+
+def _first_reaching_lot(w: np.ndarray, e: np.ndarray, qty: np.ndarray, lot: float, n_windows: int) -> np.ndarray:
+    """Per window: the excursion at which volume cumulated from the deepest print reaches ``lot``."""
+    out = np.full(n_windows, -np.inf)
+    if len(w) == 0:
+        return out
+    order = np.lexsort((-e, w))                 # by window, then deepest print first
+    w, e, qty = w[order], e[order], qty[order]
+    cum = pd.Series(qty).groupby(w).cumsum().to_numpy()
+    reached = np.flatnonzero(cum >= lot - QTY_EPS)
+    first = reached[np.unique(w[reached], return_index=True)[1]]  # first reaching row of each window
+    out[w[first]] = e[first]
+    return out
+
+
+def lot_excursions(snap: pd.DataFrame, trades: pd.DataFrame, window_s: int, lot: float) -> pd.DataFrame:
+    """Per window: time_s, mid0 and the lot excursions ask_exc, bid_exc (see section 5).
+
+    Same windows and mid_0 as ``touch_excursions``; trades need a ``qty`` column (BTC).
+    -inf means less than one lot traded on that side in the window (no fill at any distance).
+    """
+    if lot <= 0:
+        raise ValueError("lot must be positive")
+    t0 = int(snap["time_s"].iloc[0])
+    starts = snap[(snap["time_s"] - t0) % window_s == 0][["time_s", "mid"]].reset_index(drop=True)
+    n_windows = len(starts)
+    mid0 = starts["mid"].to_numpy(float)
+    w_id = (trades["time"].to_numpy(np.int64) // 1000 - t0) // window_s
+    price = trades["price"].to_numpy(float)
+    qty = trades["qty"].to_numpy(float)
+    buy = ~trades["is_buyer_maker"].to_numpy(bool)
+    ok = (w_id >= 0) & (w_id < n_windows)
+    ok[ok] &= np.isfinite(mid0[w_id[ok]])
+
+    m = ok & buy
+    ask = _first_reaching_lot(w_id[m], price[m] - mid0[w_id[m]], qty[m], lot, n_windows)
+    m = ok & ~buy
+    bid = _first_reaching_lot(w_id[m], mid0[w_id[m]] - price[m], qty[m], lot, n_windows)
+    out = pd.DataFrame({"time_s": starts["time_s"], "mid0": mid0, "ask_exc": ask, "bid_exc": bid})
+    return out[np.isfinite(mid0)].reset_index(drop=True)
+
+
+r"""
+6. Trailing volatility (stage 3, used by the sigma-conditional model and the simulator's observation)
+-----------------------------------------------------------------------------------------------------
+On the UTC-minute grid take the 60 s mid changes d_j = S(60 j) - S(60 (j-1)). Each d_j^2 / 60
+estimates sigma^2 (per second). The trailing estimate at minute j is an exponentially weighted
+average of the past values,
+
+    sigma_hat_j^2 = sum_{i>=0} w_i d_{j-i}^2 / 60 / sum_i w_i,   w_i = (1 - alpha)^i,  alpha = 2 / (span + 1),
+
+(pandas ewm(span, adjust=True)). span = 30 minutes gives recent changes most weight while
+averaging over roughly the last half hour. A window that opens at second s uses sigma_hat from
+the last minute boundary <= s, so it only uses changes that have already happened.
+Until ``span`` changes have been seen the estimate is NaN (no fill-in).
+"""
+
+
+def trailing_sigma(snap: pd.DataFrame, span_min: int = 30) -> np.ndarray:
+    """sigma_hat (USDT/sqrt(s)) for every row of the 1-second snapshot table (NaN during warm-up)."""
+    t = snap["time_s"].to_numpy(np.int64)
+    t0 = t[0]
+    rel = t - t0
+    if not np.array_equal(rel, np.arange(len(t))):
+        raise ValueError("snapshots must be on a gap-free 1-second grid")
+    mid = snap["mid"].to_numpy(float)
+    minute_mid = mid[::60]                               # S at seconds 0, 60, 120, ...
+    d2 = np.diff(minute_mid) ** 2 / 60.0                 # change ending at minute j (j = 1, 2, ...)
+    var = pd.Series(d2).ewm(span=span_min, adjust=True, min_periods=span_min, ignore_na=True).mean().to_numpy()
+    var_at_minute = np.concatenate([[np.nan], var])      # minute 0 has no change yet
+    j = rel // 60                                        # last minute boundary at or before each second
+    return np.sqrt(var_at_minute[j])

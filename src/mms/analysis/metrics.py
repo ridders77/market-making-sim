@@ -83,3 +83,42 @@ def paired_difference(a: np.ndarray, b: np.ndarray, stat: Callable = np.mean,
     boots = np.array([stat(a[r]) - stat(b[r]) for r in idx])
     lo, hi = np.quantile(boots, [0.025, 0.975])
     return float(stat(a) - stat(b)), float(lo), float(hi)
+
+
+def ratio_of_means_ci(a: np.ndarray, b: np.ndarray, scale: float = 1.0, n_boot: int = 2000,
+                      seed: int = 0) -> tuple[float, float, float]:
+    """scale * sum(a) / sum(b) with a percentile bootstrap over paths (pairs (a_i, b_i) kept together).
+
+    Used for P&L per unit of traded notional: 1e4 * total P&L / total notional, in bps. The ratio
+    of sums weights each path by its volume, so paths with few fills do not dominate (a mean of
+    per-path ratios would be noisy for them)."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(a), size=(n_boot, len(a)))
+    boots = scale * a[idx].sum(1) / b[idx].sum(1)
+    lo, hi = np.quantile(boots, [0.025, 0.975])
+    return float(scale * a.sum() / b.sum()), float(lo), float(hi)
+
+
+def summary_row(res: SimResult, fee_bps: float | None = None, n_boot: int = 2000, seed: int = 0) -> dict:
+    """Stage 3 summary of one run (optionally repriced to another fee): every metric with its 95% CI.
+
+    P&L in USDT per episode and in bps of traded notional; inventory in BTC (lots x lot size)."""
+    pnl = res.pnl if fee_bps is None else res.pnl_with_fee(fee_bps)
+    out = {}
+
+    def put(name, t):
+        out[name], out[name + "_lo"], out[name + "_hi"] = t
+
+    put("mean_pnl", bootstrap_ci(pnl, np.mean, n_boot, seed))
+    put("std_pnl", bootstrap_ci(pnl, _std, n_boot, seed))
+    put("sharpe_like", bootstrap_ci(pnl, sharpe_like, n_boot, seed))
+    put("pnl_bps", ratio_of_means_ci(pnl, res.notional, 1e4, n_boot, seed))
+    put("std_final_q_btc", bootstrap_ci(res.q * res.lot, _std, n_boot, seed))
+    put("mean_max_abs_q_btc", bootstrap_ci(res.max_abs_q * res.lot, np.mean, n_boot, seed))
+    put("fills_per_episode", bootstrap_ci(res.n_fills.astype(float), np.mean, n_boot, seed))
+    put("avg_spread_captured", bootstrap_ci(res.avg_spread_captured, np.nanmean, n_boot, seed))
+    put("mean_quoted_spread", bootstrap_ci(res.mean_quoted_spread, np.mean, n_boot, seed))
+    out["notional_per_episode"] = float(np.mean(res.notional))
+    out["n_clipped"] = res.n_clipped
+    return out
