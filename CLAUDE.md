@@ -32,7 +32,11 @@ The owner is a first-year maths student building this for quant trading internsh
 - Reservation price: r = S − q·γ·σ²·(T − t)
 - Total spread: δ_a + δ_b = γ·σ²·(T − t) + (2/γ)·ln(1 + γ/k)
 - Quotes: ask = r + spread/2, bid = r − spread/2, rounded to the tick size when a tick size is set.
-- Paper setup for replication: S0 = 100, T = 1, σ = 2, dt = 0.005, A = 140, k = 1.5, γ ∈ {0.01, 0.1, 0.5}, 1,000 simulations. The benchmark is a symmetric strategy using the same average spread. Expected pattern: A–S has a similar or slightly lower mean profit but a much lower standard deviation of profit and of final inventory. For γ = 0.1 the paper reports roughly mean 63 / std 6 for A–S vs mean 67 / std 13 for symmetric. Treat these as sanity targets, not exact values.
+- Paper setup for replication: S0 = 100, T = 1, σ = 2, dt = 0.005, A = 140, k = 1.5, γ ∈ {0.1, 0.01, 1}, 1,000 simulations, fills with probability λ(δ)·dt (the paper's rule; stage 1 only). The benchmark is a symmetric strategy using the same average spread. Paper figures (Avellaneda & Stoikov 2008, Quantitative Finance, section 4), mean profit / std profit / std final q:
+  - γ = 0.1: inventory strategy 65.0 / 6.6 / 2.9; symmetric 68.4 / 12.7 / 8.4 (average spread 1.49)
+  - γ = 0.01: inventory strategy 68.6 / 8.7 / 5.1; symmetric 68.8 / 12.8 / 8.7 (average spread 1.35)
+  - γ = 1: inventory strategy 31.4 / 5.0 / 1.7; symmetric 44.0 / 11.0 / 5.1 (average spread 3.02)
+  Expected pattern: A–S has a similar or lower mean profit but a much lower std of profit and of final inventory. Treat these as sanity targets, not exact values.
 
 ## Layout
 

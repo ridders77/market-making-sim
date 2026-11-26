@@ -1,12 +1,13 @@
 """Replicate Avellaneda & Stoikov (2008), section 4 (numerical simulations).
 
 Setup: S0 = 100, T = 1, sigma = 2, dt = 0.005, A = 140, k = 1.5,
-gamma in {0.01, 0.1, 0.5}, 1,000 paths each (seeds 0..999, shared by both
+gamma in {0.01, 0.1, 1}, 1,000 paths each (seeds 0..999, shared by both
 strategies so the comparison is paired). No fees, no tick size (as in the paper).
 
 Benchmark: a symmetric strategy whose fixed spread equals the A-S spread
-averaged over the run. A second benchmark uses the spread the paper's table
-reports, (2/gamma) ln(1 + gamma/k), to check the benchmark definition.
+averaged over the run. A second benchmark uses only the liquidity term
+(2/gamma) ln(1 + gamma/k), to show how much the benchmark definition matters.
+Fills use the paper's rule P(fill in dt) = lambda * dt (stage 1 only).
 
 Writes to results/stage1/: replication.csv, replication.md, sample_path.png,
 pnl_distributions.png, inventory_distributions.png.
@@ -30,18 +31,21 @@ from mms.strategies.naive import NaiveSymmetric
 
 OUT = Path(__file__).resolve().parents[1] / "results" / "stage1"
 PARAMS = MarketParams(s0=100.0, sigma=2.0, T=1.0, dt=0.005, A=140.0, k=1.5)
-GAMMAS = [0.01, 0.1, 0.5]
+GAMMAS = [0.01, 0.1, 1.0]
 SEEDS = range(1000)
 N_BOOT = 2000
 
-# Paper, Table 1-3 (spread, mean profit, std profit, mean final q, std final q)
+# Avellaneda & Stoikov (2008), Quantitative Finance 8(3), section 4, tables for
+# gamma = 0.1, 0.01 and 1, checked against the paper by the owner (2026-11-26).
+# Values: (average spread, mean profit, std profit, std final q).
+# The paper reports one average spread per gamma, used by both strategies.
 PAPER = {
-    (0.01, "avellaneda_stoikov"): (1.33, 66.78, 8.76, -0.02, 4.70),
-    (0.01, "symmetric"): (1.33, 67.36, 13.40, -0.31, 8.65),
-    (0.1, "avellaneda_stoikov"): (1.29, 62.94, 5.89, 0.10, 2.80),
-    (0.1, "symmetric"): (1.29, 67.21, 13.43, -0.018, 8.66),
-    (0.5, "avellaneda_stoikov"): (1.15, 33.92, 4.72, -0.02, 1.88),
-    (0.5, "symmetric"): (1.15, 66.20, 14.53, 0.25, 9.06),
+    (0.1, "avellaneda_stoikov"): (1.49, 65.0, 6.6, 2.9),
+    (0.1, "symmetric"): (1.49, 68.4, 12.7, 8.4),
+    (0.01, "avellaneda_stoikov"): (1.35, 68.6, 8.7, 5.1),
+    (0.01, "symmetric"): (1.35, 68.8, 12.8, 8.7),
+    (1.0, "avellaneda_stoikov"): (3.02, 31.4, 5.0, 1.7),
+    (1.0, "symmetric"): (3.02, 44.0, 11.0, 5.1),
 }
 
 log = logging.getLogger("replication")
@@ -60,23 +64,23 @@ def main() -> None:
         a_s = AvellanedaStoikov(gamma=g, sigma=PARAMS.sigma, k=PARAMS.k, T=PARAMS.T)
         r_as = simulate(a_s, PARAMS, SEEDS, record_paths=(g == 0.1))
         avg_spread = float(r_as.mean_quoted_spread.mean())
-        paper_spread = (2 / g) * np.log1p(g / PARAMS.k)
+        liq_spread = (2 / g) * np.log1p(g / PARAMS.k)
         r_sym = simulate(NaiveSymmetric(avg_spread), PARAMS, SEEDS)
-        r_sym_paper = simulate(NaiveSymmetric(paper_spread, name="symmetric_paper_spread"), PARAMS, SEEDS)
+        r_sym_liq = simulate(NaiveSymmetric(liq_spread, name="symmetric_liquidity_spread"), PARAMS, SEEDS)
         results[g] = {"avellaneda_stoikov": r_as, "symmetric": r_sym}
 
         for name, res in [("avellaneda_stoikov", r_as), ("symmetric", r_sym),
-                          ("symmetric_paper_spread", r_sym_paper)]:
+                          ("symmetric_liquidity_spread", r_sym_liq)]:
             s = summarise(res, N_BOOT, seed=1).set_index("metric")
             row = {"gamma": g, "strategy": name, "n_paths": len(res.pnl), "n_clipped": res.n_clipped}
             for m in s.index:
                 row[m] = s.loc[m, "estimate"]
                 row[m + "_lo"] = s.loc[m, "ci_low"]
                 row[m + "_hi"] = s.loc[m, "ci_high"]
-            paper = PAPER.get((g, name if name != "symmetric_paper_spread" else "symmetric"))
+            paper = PAPER.get((g, name))
             if paper:
-                row.update(paper_spread_reported=paper[0], paper_mean_pnl=paper[1], paper_std_pnl=paper[2],
-                           paper_mean_q=paper[3], paper_std_q=paper[4])
+                row.update(paper_avg_spread=paper[0], paper_mean_pnl=paper[1], paper_std_pnl=paper[2],
+                           paper_std_q=paper[3])
             rows.append(row)
             md_rows.append(
                 f"| {g} | {name} | {row['mean_quoted_spread']:.3f} | "
@@ -87,7 +91,7 @@ def main() -> None:
                 f"{fmt(row['std_final_q'], row['std_final_q_lo'], row['std_final_q_hi'])} | "
                 f"{row['mean_max_abs_q']:.2f} | {row['fill_rate']:.3f} | {row['avg_spread_captured']:.3f} | "
                 f"{res.n_clipped} | "
-                + (f"{paper[1]} / {paper[2]} / {paper[4]}" if paper else "—") + " |"
+                + (f"{paper[0]} / {paper[1]} / {paper[2]} / {paper[3]}" if paper else "—") + " |"
             )
 
         # Paired differences A-S minus symmetric (same seeds)
@@ -103,10 +107,10 @@ def main() -> None:
         "# Stage 1: Avellaneda–Stoikov replication\n\n"
         f"S0=100, T=1, σ=2, dt=0.005, A=140, k=1.5; {len(SEEDS)} paired paths per γ (seeds 0–999); "
         "no fees, no tick. Cells show estimate [95% bootstrap CI]. "
-        "`symmetric` uses the mean A–S quoted spread; `symmetric_paper_spread` uses (2/γ)ln(1+γ/k), "
-        "the spread printed in the paper's tables. `clipped` = quote-steps with λ·dt > 1.\n\n"
+        "`symmetric` uses the mean A–S quoted spread; `symmetric_liquidity_spread` uses only the liquidity term (2/γ)ln(1+γ/k). "
+        "Paper figures: Avellaneda & Stoikov (2008), section 4 tables. `clipped` = quote-steps with λ·dt > 1.\n\n"
         "| γ | strategy | avg spread | mean P&L | std P&L | mean/std | mean q_T | std q_T | "
-        "mean max|q| | fill rate | spread captured | clipped | paper mean / std P&L / std q |\n"
+        "mean max|q| | fill rate | spread captured | clipped | paper avg spread / mean / std P&L / std q |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
     )
     (OUT / "replication.md").write_text(header + "\n".join(md_rows) + "\n", encoding="utf-8")
