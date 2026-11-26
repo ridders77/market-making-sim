@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 from stage4_common import (CAL_DAYS, FEES, HORIZONS, OUT, RULES, TEST_DAYS, fee_dependent, load_fills, load_runs,
-                           log, pnl_at_fee, run_task, spec_key)
+                           log, pnl_at_fee, run_task, spec_key, task_key)
 from mms.analysis.metrics import bootstrap_ci, paired_difference
 
 GRIDS = {
@@ -49,7 +49,7 @@ N_BOOT = 2000
 
 
 def run_all(tasks: list, workers: int) -> None:
-    tasks = list(dict.fromkeys(tasks))        # de-duplicate, keep order
+    tasks = list({task_key(*t[:5], t[5]): t for t in tasks}.values())     # de-duplicate, keep order
     log.info("%d tasks", len(tasks))
     with ProcessPoolExecutor(max_workers=workers) as ex:
         for i, k in enumerate(ex.map(run_task, tasks, chunksize=1), 1):
@@ -298,7 +298,6 @@ def markout_report(ch: dict) -> None:
     x = np.arange(len(bd))
     err = np.array([[r.mk60 - r.mk60_ci[0], r.mk60_ci[1] - r.mk60] for _, r in bd.iterrows()]).T
     ax.bar(x, bd.mk60, color="#9467bd", yerr=err, capsize=3, label="our fills (60 s markout)")
-    ax.plot(x, bd.captured if "captured" in bd else np.nan, color="black")
     ax.set_xticks(x, bd.bucket, fontsize=8); ax.set_xlabel("distance of our quote from the mid at the fill (USDT)")
     ax.set_ylabel("60 s markout (USDT per BTC)")
     ax.set_title("60 s markout by distance from the mid (all strategies, proportional rule, 95% CI)", fontsize=9)
