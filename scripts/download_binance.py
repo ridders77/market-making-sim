@@ -80,6 +80,57 @@ def _safe_extract_csv(zip_path: Path, out_dir: Path) -> Path:
     return target
 
 
+def download_verified_zip(
+    session: requests.Session,
+    market: str,
+    data_type: str,
+    symbol: str,
+    day: dt.date,
+    out_dir: Path,
+    timeout: float = 120,
+) -> Path | None:
+    """Download one daily zip into out_dir and verify its SHA-256 against the .CHECKSUM file.
+
+    Returns the zip path, or None if the day is not published (HTTP 404).
+    A checksum mismatch deletes the zip and raises.
+    """
+    url = daily_url(market, data_type, symbol, day)
+    return fetch_verified(session, url, out_dir / f"{symbol}-{data_type}-{day.isoformat()}.zip", timeout)
+
+
+def monthly_url(market: str, data_type: str, symbol: str, month: str, interval: str | None = None) -> str:
+    """URL of one monthly zip, e.g. .../futures/um/monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2023-05.zip."""
+    if interval:
+        return f"{BASE_URL}/{market}/monthly/{data_type}/{symbol}/{interval}/{symbol}-{interval}-{month}.zip"
+    return f"{BASE_URL}/{market}/monthly/{data_type}/{symbol}/{symbol}-{data_type}-{month}.zip"
+
+
+def fetch_verified(session: requests.Session, url: str, zip_path: Path, timeout: float = 120) -> Path | None:
+    """Download url to zip_path and check its SHA-256 against url + '.CHECKSUM'.
+
+    Returns zip_path, or None on HTTP 404. A mismatch deletes the file and raises.
+    """
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    chk = session.get(url + ".CHECKSUM", timeout=timeout)
+    if chk.status_code == 404:
+        log.warning("not published: %s", url)
+        return None
+    chk.raise_for_status()
+    expected_sha = chk.text.split()[0].strip().lower()
+    sha = hashlib.sha256()
+    with session.get(url, stream=True, timeout=timeout) as r:
+        r.raise_for_status()
+        with open(zip_path, "wb") as f:
+            for chunk in r.iter_content(1 << 20):
+                f.write(chunk)
+                sha.update(chunk)
+    if sha.hexdigest() != expected_sha:
+        zip_path.unlink()
+        raise RuntimeError(f"checksum mismatch for {url}: got {sha.hexdigest()}, expected {expected_sha}")
+    log.info("checksum ok: %s", zip_path.name)
+    return zip_path
+
+
 def download_day(
     session: requests.Session,
     market: str,
@@ -97,26 +148,9 @@ def download_day(
         log.info("skip (present): %s", csv_path.name)
         return csv_path
 
-    url = daily_url(market, data_type, symbol, day)
-    chk = session.get(url + ".CHECKSUM", timeout=timeout)
-    if chk.status_code == 404:
-        log.warning("not published: %s", url)
+    zip_path = download_verified_zip(session, market, data_type, symbol, day, out_dir, timeout)
+    if zip_path is None:
         return None
-    chk.raise_for_status()
-    expected_sha = chk.text.split()[0].strip().lower()
-
-    zip_path = out_dir / (csv_path.stem + ".zip")
-    sha = hashlib.sha256()
-    with session.get(url, stream=True, timeout=timeout) as r:
-        r.raise_for_status()
-        with open(zip_path, "wb") as f:
-            for chunk in r.iter_content(1 << 20):
-                f.write(chunk)
-                sha.update(chunk)
-    if sha.hexdigest() != expected_sha:
-        zip_path.unlink()
-        raise RuntimeError(f"checksum mismatch for {url}: got {sha.hexdigest()}, expected {expected_sha}")
-    log.info("checksum ok: %s", zip_path.name)
 
     extracted = _safe_extract_csv(zip_path, out_dir)
     if extracted != csv_path:

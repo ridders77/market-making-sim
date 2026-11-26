@@ -85,3 +85,35 @@ def test_simulate_rejects_too_large_dt():
 
 def test_market_params_n_steps():
     assert PAPER.n_steps == 200
+
+
+# ---------------------------------------------------------------- stage 2 additions
+REAL = MarketParams(s0=30000.0, sigma=2.0, T=60.0, dt=0.05, A=1.5, k=4.0, fill_rule="exact")
+
+
+def test_fee_equals_fee_free_pnl_minus_fee_times_notional():
+    # Fees only move cash: P&L(f) = P&L(0) - f * sum(|price| of each fill). Check on a real-scale setup.
+    strat = NaiveSymmetric(0.6)
+    r0 = simulate(strat, REAL, range(20), tick_size=0.1, maker_fee_bps=0.0)
+    r2 = simulate(strat, REAL, range(20), tick_size=0.1, maker_fee_bps=2.0)
+    rr = simulate(strat, REAL, range(20), tick_size=0.1, maker_fee_bps=-0.5)
+    np.testing.assert_allclose(r2.pnl, r0.pnl - 2e-4 * r0.notional, rtol=0, atol=1e-6)
+    np.testing.assert_allclose(rr.pnl, r0.pnl + 0.5e-4 * r0.notional, rtol=0, atol=1e-6)
+    np.testing.assert_allclose(r0.pnl_with_fee(2.0), r2.pnl, atol=1e-6)
+    assert (r0.notional > 0).all()
+
+
+def test_simulate_chunked_matches_unchunked():
+    from mms.sim.simulator import simulate_chunked
+    strat = AvellanedaStoikov(gamma=1e-3, sigma=REAL.sigma, k=REAL.k, T=REAL.T)
+    a = simulate(strat, REAL, range(10), tick_size=0.1)
+    b = simulate_chunked(strat, REAL, range(10), chunk=3, tick_size=0.1)
+    np.testing.assert_array_equal(a.pnl, b.pnl)
+    np.testing.assert_array_equal(a.q, b.q)
+    np.testing.assert_array_equal(a.seeds, b.seeds)
+    assert a.n_clipped == b.n_clipped and a.n_steps == b.n_steps
+
+
+def test_exact_rule_dt_check_in_simulate():
+    with pytest.raises(ValueError):
+        simulate(NaiveSymmetric(1.0), MarketParams(30000.0, 2.0, 10.0, 0.1, 1.5, 4.0, fill_rule="exact"), range(2))

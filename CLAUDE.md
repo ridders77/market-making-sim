@@ -27,7 +27,7 @@ The owner is a first-year maths student building this for quant trading internsh
 ## The maths (A–S)
 
 - Mid-price: arithmetic Brownian motion, dS = σ dW (discretised with step dt).
-- Fill intensity at distance δ from mid: λ(δ) = A·exp(−k·δ). In a step of length dt, a quote at distance δ fills with probability λ(δ)·dt (dt must be small enough that this stays well below 1; assert it).
+- Fill intensity at distance δ from mid: λ(δ) = A·exp(−k·δ). In a step of length dt, a quote at distance δ fills with probability λ(δ)·dt in the stage 1 paper replication, and with the exact Poisson probability 1 − exp(−λ(δ)·dt) from stage 2 on (`fill_rule="exact"`), with dt chosen so that A·dt < 0.1 (asserted).
 - Inventory q, cash X, wealth = X + q·S. Risk aversion γ, horizon T.
 - Reservation price: r = S − q·γ·σ²·(T − t)
 - Total spread: δ_a + δ_b = γ·σ²·(T − t) + (2/γ)·ln(1 + γ/k)
