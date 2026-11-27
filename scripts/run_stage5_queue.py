@@ -28,13 +28,13 @@ import pandas as pd
 from stage5_common import DERIVED, OUT, run_pool, setup_logging
 from stage4_common import (EP_STEPS, GAMMA, HOURS, OUT as OUT4, RUNS as RUNS4, TEST_DAYS, episode_markouts,
                            make_policy, pnl_at_fee, spec_key, task_key)
-from mms.analysis.metrics import bootstrap_ci, zero_crossing
+from mms.analysis.metrics import bootstrap_ci, break_even_bracket
 from mms.replay.data import load_day
 from mms.replay.env import ReplayConfig, run_episode
 
 log = logging.getLogger("stage5")
 RUNS = DERIVED / "stage5_queue_runs"
-FRACS = [1.0, 0.5, 0.25, 0.0]
+FRACS = [1.0, 0.5, 0.25, 0.15, 0.1, 0.05, 0.02, 0.0]
 FEES4 = [-0.5, 0.0, 2.0]
 RULE, LAT, LOT = "proportional", 100, 0.01
 N_BOOT = 2000
@@ -121,16 +121,16 @@ def report() -> None:
                          "mk60_all": df.mk60_sum.sum() / df.mk_qty.sum(), "mk60_queue": mkq["queue"],
                          "mk60_sweep": mkq["through"], "bp_per_notional": 1e4 * P[:, j].sum() / df.notional.sum(),
                          "mean_max_abs_q": df.max_abs_q.mean() / LOT})
-        # break-even f with a paired bootstrap over hours
-        rng = np.random.default_rng(rng_seed)
-        n = P.shape[0]
-        bs = np.array([zero_crossing(FRACS, P[rng.integers(0, n, n)].mean(axis=0)) for _ in range(N_BOOT)])
-        ok = np.isfinite(bs)
-        be.append({"strategy": name, "fee_bps": fee, "break_even_f": zero_crossing(FRACS, means),
-                   "lo": float(np.quantile(bs[ok], 0.025)) if ok.mean() > 0.5 else np.nan,
-                   "hi": float(np.quantile(bs[ok], 0.975)) if ok.mean() > 0.5 else np.nan,
-                   "share_resamples_with_crossing": float(ok.mean()),
-                   "profitable_at_front": bool(bootstrap_ci(P[:, -1], np.mean, N_BOOT, seed=rng_seed)[1] > 0)})
+        # break-even as a bracket: last losing f and first profitable f (means), and whether each end is
+        # significant (95% CI entirely below / above 0)
+        lo_f, hi_f = break_even_bracket(FRACS, means)
+        sig = {}
+        for j, f in enumerate(FRACS):
+            e = bootstrap_ci(P[:, j], np.mean, N_BOOT, seed=rng_seed)
+            sig[f] = "loss" if e[2] < 0 else ("profit" if e[1] > 0 else "unclear")
+        be.append({"strategy": name, "fee_bps": fee, "last_losing_f": lo_f, "first_profitable_f": hi_f,
+                   "last_losing_sig": sig.get(lo_f, ""), "first_profitable_sig": sig.get(hi_f, ""),
+                   "clearly_profitable_fs": ",".join(f"{f:g}" for f in FRACS if sig[f] == "profit")})
     t, b = pd.DataFrame(rows), pd.DataFrame(be)
     t.to_csv(OUT / "queue_whatif.csv", index=False)
     b.to_csv(OUT / "break_even_queue.csv", index=False)
@@ -161,20 +161,22 @@ def _markdown(t: pd.DataFrame, b: pd.DataFrame) -> None:
     M += ["\nVolume shares and markouts at 0 bp; for touch + skew they are for its 0 bp configuration (the +2 bp configuration "
           "uses a different skew γ). Sweep = filled by a trade through our price or a book crossing.\n",
           "## Break-even queue position\n",
-          "f at which the mean P&L crosses zero (linear interpolation between the grid points; 95% CI from a paired bootstrap over "
-          "hours, shown when at least half of the resamples cross). 'none' = loses at every f, including the front.\n",
+          "Reported as a bracket: the last f (scanning from the back of the queue, f = 1, to the front, f = 0) where the mean "
+          "P&L is negative and the first where it is positive. Not interpolated: P&L is far from linear in f (most of the "
+          "gain arrives in the last few % of the queue). (loss) / (profit) = the 95% CI at that f lies entirely below / "
+          "above zero.\n",
           "| strategy | −0.5 bp | 0 bp | +2 bp |", "|---|---|---|---|"]
     for name in ("touch", "touch_skew"):
         cells = []
         for fee in FEES4:
             r = b[(b.strategy == name) & (b.fee_bps == fee)].iloc[0]
-            if np.isfinite(r.break_even_f):
-                ci = f" [{r.lo:.2f}, {r.hi:.2f}]" if np.isfinite(r.lo) else ""
-                cells.append(f"{r.break_even_f:.2f}{ci}")
+            if np.isfinite(r.first_profitable_f) and np.isfinite(r.last_losing_f):
+                cells.append(f"between f = {r.last_losing_f:g} ({r.last_losing_sig}) and f = {r.first_profitable_f:g} "
+                             f"({r.first_profitable_sig})")
+            elif np.isfinite(r.first_profitable_f):
+                cells.append("profitable at every f")
             else:
-                cells.append("none (profitable at every f)" if r.profitable_at_front and
-                             t[(t.strategy == name) & (t.fee_bps == fee) & (t.f == 1.0)].mean_pnl.iloc[0] > 0
-                             else "none")
+                cells.append("none: loses at every f, including the front")
         M.append(f"| {LABEL[name]} | " + " | ".join(cells) + " |")
     (OUT / "queue_whatif.md").write_text("\n".join(M) + "\n", encoding="utf-8")
 

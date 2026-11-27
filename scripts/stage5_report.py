@@ -417,7 +417,7 @@ def action_shares(head: str) -> pd.DataFrame:
 def learning_chart() -> None:
     lc = pd.read_csv(OUT / "learning_curves.csv")
     lc = lc[lc.H == H_MAIN]
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.2), sharey=False)
     for ax, fee in zip(axes, FEES):
         for j, v in enumerate(["private", "ofi", "queue", "sigma", "ofi+queue+sigma"]):
             sub = lc[(lc.variant == v) & (lc.fee == fee)]
@@ -432,7 +432,7 @@ def learning_chart() -> None:
         ax.set_xlabel("training episodes")
         ax.set_title(FEE_LABEL[fee], fontsize=9)
         ax.grid(alpha=0.3)
-    axes[0].set_ylabel("mean shortfall of the greedy policy (bps), buy and sell averaged")
+    axes[0].set_ylabel("greedy-policy shortfall (bps)")
     h, l = axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="center right", fontsize=7, frameon=False)
     fig.suptitle("Learning curves (H = 1 min): solid = validation days, dotted = training-day sample; band = range over 5 "
@@ -508,7 +508,7 @@ def report() -> None:
     (OUT / "state_value.md").write_text("\n".join(md_state_value(sv)) + "\n", encoding="utf-8")
     (OUT / "passive_fills_markouts.md").write_text("\n".join(md_fills(f)) + "\n", encoding="utf-8")
     S = ["# Seed stability and action use\n", "Share of states (visited ≥ 50 times on average) where the 5 seeds' greedy "
-         "actions agree.\n", sa.to_markdown(index=False, floatfmt=".2f") if hasattr(sa, "to_markdown") else sa.to_string(),
+         "actions agree.\n", sa.to_string(index=False, float_format=lambda v: f"{v:.2f}"),
          "\nTest-day decisions: share of episodes whose first action is cross / touch / behind, share with any cross, and the "
          "share of decisions that used the unvisited-state fallback.\n", ash.to_string(index=False)]
     (OUT / "seed_stability.md").write_text("\n".join(S) + "\n", encoding="utf-8")

@@ -1,0 +1,9 @@
+{
+  "f": 0.1,
+  "fee_bps": -0.5,
+  "markout60_usdt_per_btc": 1.2314666043786517,
+  "mean_sigma2": 4.080379973323928,
+  "gamma_per_lot": 1.6766774614531303e-05,
+  "penalty_hour_at_limit_usdt": 0.1231466604378652,
+  "markout_cost_of_10_lots_usdt": 0.12314666043786518
+}

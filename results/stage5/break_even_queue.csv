@@ -1,0 +1,7 @@
+strategy,fee_bps,last_losing_f,first_profitable_f,last_losing_sig,first_profitable_sig,clearly_profitable_fs
+touch,-0.5,0.15,0.1,loss,profit,"0.1,0.05,0.02,0"
+touch,0.0,,,,,
+touch,2.0,,,,,
+touch_skew,-0.5,0.15,0.1,unclear,profit,"0.1,0.05,0.02,0"
+touch_skew,0.0,,,,,
+touch_skew,2.0,,,,,

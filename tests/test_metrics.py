@@ -44,3 +44,13 @@ def test_zero_crossing_hand_worked():
     assert zero_crossing([1, 0.5, 0.25, 0], [-10, -4, 2, 5]) == pytest.approx(0.5 - 0.25 * 4 / 6)
     assert np.isnan(zero_crossing([1, 0.5, 0.25, 0], [-10, -4, -2, -1]))      # never breaks even
     assert zero_crossing([0, 0.5, 1], [3, 1, -1]) == pytest.approx(0.75)        # order of the grid does not matter
+
+
+def test_break_even_bracket_hand_worked():
+    from mms.analysis.metrics import break_even_bracket
+    # loses at f = 1, 0.5, 0.25, 0.1; profitable at 0.05 and 0 -> bracket (0.1, 0.05)
+    assert break_even_bracket([1, 0.5, 0.25, 0.1, 0.05, 0], [-9, -6, -3, -1, 2, 50]) == (0.1, 0.05)
+    lo, hi = break_even_bracket([1, 0.5, 0], [-9, -6, -1])
+    assert np.isnan(lo) and np.isnan(hi)                    # never profitable
+    lo, hi = break_even_bracket([0, 0.5, 1], [5, 3, 1])     # profitable even at the back
+    assert np.isnan(lo) and hi == 1.0

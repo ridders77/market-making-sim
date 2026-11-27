@@ -137,3 +137,18 @@ def zero_crossing(x, y) -> float:
         if (ys[a] < 0) != (ys[a + 1] < 0):
             return float(xs[a] + (xs[a + 1] - xs[a]) * (0 - ys[a]) / (ys[a + 1] - ys[a]))
     return float(xs[-1]) if ys[-1] == 0 else float("nan")
+
+
+def break_even_bracket(x, y) -> tuple[float, float]:
+    """Part B break-even as a bracket, not an interpolated point: scanning x from largest to smallest (queue
+    share f from the back, 1, to the front, 0), return (last x with y < 0, first x with y > 0) around the first
+    sign change from losing to profitable. (nan, nan) if y never turns positive after a loss; (nan, x_max) if y
+    is already positive at the largest x."""
+    order = np.argsort(np.asarray(x, float))[::-1]
+    xs, ys = np.asarray(x, float)[order], np.asarray(y, float)[order]
+    if ys[0] > 0:
+        return float("nan"), float(xs[0])
+    for a in range(len(xs) - 1):
+        if ys[a] < 0 and ys[a + 1] > 0:
+            return float(xs[a]), float(xs[a + 1])
+    return float("nan"), float("nan")
