@@ -149,3 +149,16 @@ at a queue priority a retail participant cannot get.
 ## Charts
 `execution_cost.png`, `policy_heatmap_private.png`, `policy_heatmap_market_retail.png`, `policy_heatmap_market_pro.png`,
 `state_value.png`, `learning_curves.png`, `break_even_queue.png`.
+
+## For stage 6 (README, demo, CV bullet): needs the owner's decision
+1. **Headline framing.** Recommended: "RL execution agent saves ~2 bp (≈40%) vs taking liquidity, matching but not
+   beating a simple rest-at-touch rule; market signals added nothing out of sample." Leading with "beats the baseline"
+   would be false.
+2. **Main horizon.** The report uses H = 1 min (H = 5 min made passive fills certain). Keep 1 min in the README, or show
+   all three?
+3. **Part B in the README:** include the break-even queue position (between 10% and 15% of the queue, rebate only) as a
+   clearly labelled what-if, or leave it to this report?
+4. **Demo scope:** recommended: replay one execution episode (rest-at-touch vs RL vs taker) plus the policy heatmap;
+   no live RL training in Streamlit.
+5. **Professional fee tier:** keep it as a stated assumption, or replace it with a sourced fee schedule before
+   publishing.
