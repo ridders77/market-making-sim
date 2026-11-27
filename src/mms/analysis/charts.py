@@ -16,7 +16,8 @@ COLOURS = {"avellaneda_stoikov": "#1f77b4", "symmetric": "#ff7f0e"}
 LABELS = {"avellaneda_stoikov": "Avellaneda–Stoikov", "symmetric": "Symmetric (same avg spread)"}
 
 
-def plot_sample_path(res: SimResult, path: int, title: str, out: Path) -> None:
+def plot_sample_path(res: SimResult, path: int, title: str, out: Path,
+                     ylabel_price: str = "price", xlabel_time: str = "time t") -> None:
     """Mid, bid/ask quotes and inventory over time for one path."""
     p = res.paths
     t, tq = p["t"][:-1], p["t"]
@@ -24,13 +25,13 @@ def plot_sample_path(res: SimResult, path: int, title: str, out: Path) -> None:
     ax1.plot(tq, p["mid"][path], color="black", lw=1.2, label="mid")
     ax1.plot(t, p["ask"][path], color="#d62728", lw=0.8, label="ask")
     ax1.plot(t, p["bid"][path], color="#2ca02c", lw=0.8, label="bid")
-    ax1.set_ylabel("price")
+    ax1.set_ylabel(ylabel_price)
     ax1.legend(loc="best", frameon=False)
     ax1.set_title(title)
     ax2.step(tq, p["q"][path], where="post", color="#1f77b4")
     ax2.axhline(0, color="grey", lw=0.5)
-    ax2.set_ylabel("inventory q")
-    ax2.set_xlabel("time t")
+    ax2.set_ylabel("inventory q (units)")
+    ax2.set_xlabel(xlabel_time)
     fig.tight_layout()
     fig.savefig(out, dpi=130)
     plt.close(fig)

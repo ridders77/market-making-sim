@@ -118,10 +118,11 @@ def main() -> None:
     # Charts
     r01 = results[0.1]["avellaneda_stoikov"]
     plot_sample_path(r01, path=0, title="A–S, γ = 0.1, seed 0: mid, quotes and inventory",
-                     out=OUT / "sample_path.png")
-    plot_distributions(results, "pnl", "final P&L", "Final P&L, 1,000 paired paths",
+                     out=OUT / "sample_path.png",
+                     ylabel_price="price (paper units, S0 = 100)", xlabel_time="time t (fraction of horizon T = 1)")
+    plot_distributions(results, "pnl", "final P&L (paper price units)", "A–S vs symmetric benchmark: final P&L, 1,000 paired paths (paper setup)",
                        OUT / "pnl_distributions.png")
-    plot_distributions(results, "q", "final inventory q_T", "Final inventory, 1,000 paired paths",
+    plot_distributions(results, "q", "final inventory q_T (units)", "A–S vs symmetric benchmark: final inventory, 1,000 paired paths (paper setup)",
                        OUT / "inventory_distributions.png", discrete=True)
     log.info("wrote results to %s", OUT)
 
